@@ -5,10 +5,10 @@ import os
 
 TOKEN = os.getenv("TOKEN")
 
-# -------- INTENTS --------
+# ================= INTENTS =================
 intents = discord.Intents.default()
 intents.message_content = True
-intents.members = True  # POTRZEBNE DO POBIERANIA CZŁONKÓW ROLI
+intents.members = True  # potrzebne do /pv
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
@@ -43,16 +43,19 @@ def format_changelog(text):
 
     return "\n".join(formatted_lines)
 
-
 # =====================================================
-# ---------------- BOT READY --------------------------
+# ---------------- READY + SYNC -----------------------
 # =====================================================
 
 @bot.event
 async def on_ready():
-    await bot.tree.sync()
-    print(f"✅ Zalogowano jako {bot.user}")
+    try:
+        synced = await bot.tree.sync()
+        print(f"✅ Zsynchronizowano {len(synced)} komend")
+    except Exception as e:
+        print(f"Błąd synchronizacji: {e}")
 
+    print(f"✅ Zalogowano jako {bot.user}")
 
 # =====================================================
 # ---------------- CHANGELOG --------------------------
@@ -73,12 +76,8 @@ async def changelog(interaction: discord.Interaction, data: str, tresc: str, pin
 
 **ZMIANY DOSTĘPNE PO 22**"""
 
-    # Ukryta odpowiedź
     await interaction.response.send_message("✅ Changelog wysłany.", ephemeral=True)
-
-    # Publiczna wiadomość od bota
     await interaction.channel.send(message)
-
 
 # =====================================================
 # ---------------- PV DO ROLI -------------------------
@@ -92,13 +91,11 @@ async def changelog(interaction: discord.Interaction, data: str, tresc: str, pin
 @app_commands.checks.has_permissions(administrator=True)
 async def pv(interaction: discord.Interaction, rola: discord.Role, tresc: str):
 
-    # Dajemy więcej czasu na wykonanie
     await interaction.response.defer(ephemeral=True)
 
     sukces = []
     porazka = []
 
-    # Pobieramy członków z rolą (bez botów)
     members = [m for m in rola.members if not m.bot]
 
     for member in members:
@@ -112,7 +109,6 @@ async def pv(interaction: discord.Interaction, rola: discord.Role, tresc: str):
         embed.set_footer(text=f"Wysłano przez: {interaction.user}")
 
         try:
-            # Wysyłanie DM
             await member.send(embed=embed)
             sukces.append(member)
 
@@ -121,8 +117,6 @@ async def pv(interaction: discord.Interaction, rola: discord.Role, tresc: str):
 
         except discord.HTTPException:
             porazka.append((member, "Bot nie może wysłać DM"))
-
-    # ---------------- RAPORT ----------------
 
     raport = f"""📨 **Raport wysyłki PV**
 
@@ -143,8 +137,7 @@ async def pv(interaction: discord.Interaction, rola: discord.Role, tresc: str):
 
     await interaction.followup.send(raport, ephemeral=True)
 
-
-# Obsługa braku permisji
+# Obsługa błędu braku permisji
 @pv.error
 async def pv_error(interaction: discord.Interaction, error):
     if isinstance(error, app_commands.errors.MissingPermissions):
@@ -153,9 +146,8 @@ async def pv_error(interaction: discord.Interaction, error):
             ephemeral=True
         )
 
-
 # =====================================================
-# ---------------- START BOT --------------------------
+# ---------------- START ------------------------------
 # =====================================================
 
 bot.run(TOKEN)
