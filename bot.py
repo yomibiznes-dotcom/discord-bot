@@ -8,8 +8,7 @@ TOKEN = os.getenv("TOKEN")
 intents = discord.Intents.default()
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-
-# ---------- FUNKCJA DO PRZERABIANIA TEKSTU ----------
+# -------- FORMATOWANIE --------
 
 def format_changelog(text):
     lines = text.split("\n")
@@ -29,40 +28,29 @@ def format_changelog(text):
 
     return "\n".join(new_lines)
 
-
-# ---------- READY ----------
+# -------- READY --------
 
 @bot.event
 async def on_ready():
-    await bot.tree.sync()
+    synced = await bot.tree.sync()
+    print(f"✅ Zsynchronizowano {len(synced)} komend")
     print(f"✅ Zalogowano jako {bot.user}")
 
+# -------- CHANGELOG --------
 
-# ---------- CHANGELOG ----------
+@bot.tree.command(name="changelog", description="Tworzy changelog")
+async def changelog(interaction: discord.Interaction, data: str, tresc: str, ping: str):
 
-@bot.tree.command(name="changelog", description="Tworzy wiadomość changelog")
-@app_commands.describe(
-    data="Data np. 01.08.2026",
-    tresc="Lista zmian (każda w nowej linii)",
-    ping="Kogo oznaczyć np. @everyone lub @rola"
-)
-async def changelog(
-    interaction: discord.Interaction,
-    data: str,
-    tresc: str,
-    ping: str
-):
-    formatted_text = format_changelog(tresc)
+    formatted = format_changelog(tresc)
 
     message = f"""# CHANGELOG ({data})
 
-{formatted_text}
+{formatted}
 
 {ping}
 
 ZMIANY DOSTĘPNE PO 22"""
 
     await interaction.response.send_message(message)
-
 
 bot.run(TOKEN)
