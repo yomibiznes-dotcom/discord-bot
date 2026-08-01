@@ -11,7 +11,6 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 # -------- FORMATOWANIE --------
 
 def format_changelog(text):
-    # dzielimy po kropce
     parts = text.split(".")
     formatted_lines = []
 
@@ -42,8 +41,7 @@ def format_changelog(text):
 
 @bot.event
 async def on_ready():
-    synced = await bot.tree.sync()
-    print(f"✅ Zsynchronizowano {len(synced)} komend")
+    await bot.tree.sync()
     print(f"✅ Zalogowano jako {bot.user}")
 
 # -------- CHANGELOG --------
@@ -53,7 +51,9 @@ async def changelog(interaction: discord.Interaction, data: str, tresc: str, pin
 
     formatted = format_changelog(tresc)
 
-    message = f"""# CHANGELOG ({data})
+    message = f"""# CHANGELOG
+
+**{data}**
 
 {formatted}
 
@@ -61,6 +61,10 @@ async def changelog(interaction: discord.Interaction, data: str, tresc: str, pin
 
 **ZMIANY DOSTĘPNE PO 22**"""
 
-    await interaction.response.send_message(message)
+    # Ukryta odpowiedź (żeby nie było "Janek użył komendy")
+    await interaction.response.send_message("✅ Changelog wysłany.", ephemeral=True)
+
+    # Normalna wiadomość jako bot
+    await interaction.channel.send(message)
 
 bot.run(TOKEN)
