@@ -11,22 +11,32 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 # -------- FORMATOWANIE --------
 
 def format_changelog(text):
-    lines = text.split("\n")
-    new_lines = []
+    # dzielimy po kropce
+    parts = text.split(".")
+    formatted_lines = []
 
-    for line in lines:
+    for part in parts:
+        line = part.strip()
+        if not line:
+            continue
+
         lower = line.lower()
 
         if "dodano" in lower:
-            new_lines.append(f"[+] {line}")
+            prefix = "[+]"
         elif "usunieto" in lower or "usunięto" in lower:
-            new_lines.append(f"[-] {line}")
+            prefix = "[-]"
         elif "poprawiono" in lower or "naprawiono" in lower:
-            new_lines.append(f"[/] {line}")
+            prefix = "[/]"
         else:
-            new_lines.append(line)
+            prefix = ""
 
-    return "\n".join(new_lines)
+        if prefix:
+            formatted_lines.append(f"`{prefix} {line}`")
+        else:
+            formatted_lines.append(f"`{line}`")
+
+    return "\n".join(formatted_lines)
 
 # -------- READY --------
 
@@ -49,7 +59,7 @@ async def changelog(interaction: discord.Interaction, data: str, tresc: str, pin
 
 {ping}
 
-ZMIANY DOSTĘPNE PO 22"""
+**ZMIANY DOSTĘPNE PO 22**"""
 
     await interaction.response.send_message(message)
 
