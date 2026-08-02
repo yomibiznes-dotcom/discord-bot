@@ -3,11 +3,11 @@ from discord.ext import commands
 from discord import app_commands
 import asyncio
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 
 TOKEN = os.getenv("TOKEN")
 
-GUILD_ID = 1115692704614060092  # 🔴 WSTAW ID
+GUILD_ID = 1115692704614060092  # 🔴 WSTAW ID SERWERA
 WEZWANIE_CHANNEL_ID = 1533507726376964186
 
 intents = discord.Intents.default()
@@ -16,16 +16,6 @@ intents.message_content = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 guild_obj = discord.Object(id=GUILD_ID)
-
-# =====================================================
-# RESET GLOBALNYCH KOMEND (WYKONA SIĘ RAZ)
-# =====================================================
-
-@bot.event
-async def setup_hook():
-    # usuń wszystkie globalne komendy
-    bot.tree.clear_commands(guild=None)
-    await bot.tree.sync()
 
 # =====================================================
 # READY
@@ -86,7 +76,7 @@ async def changelog(interaction: discord.Interaction, data: str, tresc: str, pin
     await interaction.followup.send("✅ Changelog wysłany.", ephemeral=True)
 
 # =====================================================
-# PV
+# PV (ADMIN ONLY)
 # =====================================================
 
 @bot.tree.command(name="pv", guild=guild_obj)
@@ -124,7 +114,7 @@ async def pv(interaction: discord.Interaction, rola: discord.Role, tresc: str):
     await interaction.followup.send(raport, ephemeral=True)
 
 # =====================================================
-# WEZWIJ (z DM)
+# WEZWIJ
 # =====================================================
 
 @bot.tree.command(name="wezwij", guild=guild_obj)
@@ -134,10 +124,11 @@ async def wezwij(interaction: discord.Interaction, gracz: discord.Member):
 
     channel = bot.get_channel(WEZWANIE_CHANNEL_ID)
 
-    end_time = datetime.utcnow() + timedelta(minutes=3)
+    end_time = datetime.now(UTC) + timedelta(minutes=3)
 
-    embed = discord.Embed(
-        description=f"{gracz.mention}\n\n"
+    # ✅ EMBED NA KANAŁ (z timerem)
+    embed_channel = discord.Embed(
+        description=f"# {gracz.mention}\n\n"
                     f"**ZOSTAŁEŚ WEZWANY**\n"
                     f"MASZ 3 MINUTY ABY WEJŚĆ NA POCZEKALNIĘ\n\n"
                     f"*Wzywa cię {interaction.user.mention}*\n\n"
@@ -145,37 +136,52 @@ async def wezwij(interaction: discord.Interaction, gracz: discord.Member):
         color=discord.Color.purple()
     )
 
-    embed.set_thumbnail(url=bot.user.display_avatar.url)
+    embed_channel.set_thumbnail(url=bot.user.display_avatar.url)
 
-    msg = await channel.send(embed=embed)
+    message = await channel.send(embed=embed_channel)
 
-    # ✅ WYŚLIJ TEŻ DM DO WEZWANEGO
+    # ✅ EMBED NA PV (bez timera)
+    embed_dm = discord.Embed(
+        description=f"**ZOSTAŁEŚ WEZWANY**\n\n"
+                    f"Masz 3 minuty aby wejść na poczekalnię.\n\n"
+                    f"*Wzywa cię {interaction.user.mention}*",
+        color=discord.Color.purple()
+    )
+
+    embed_dm.set_thumbnail(url=bot.user.display_avatar.url)
+
     try:
-        await gracz.send(embed=embed)
+        await gracz.send(embed=embed_dm)
     except:
         pass
 
     await interaction.followup.send("✅ Wezwanie wysłane.", ephemeral=True)
 
+    # ✅ TIMER TYLKO NA KANALE
     while True:
-        remaining = int((end_time - datetime.utcnow()).total_seconds())
+        remaining = int((end_time - datetime.now(UTC)).total_seconds())
 
         if remaining <= 0:
-            embed.description = f"{gracz.mention}\n\n**CZAS MINĄŁ ⛔**"
-            embed.color = discord.Color.red()
-            await msg.edit(embed=embed)
+            embed_channel.description = f"# {gracz.mention}\n\n" \
+                                        f"**ZOSTAŁEŚ WEZWANY**\n" \
+                                        f"MASZ 3 MINUTY ABY WEJŚĆ NA POCZEKALNIĘ\n\n" \
+                                        f"*Wzywa cię {interaction.user.mention}*\n\n" \
+                                        f"⛔ CZAS MINĄŁ"
+
+            embed_channel.color = discord.Color.red()
+            await message.edit(embed=embed_channel)
             break
 
-        m = remaining // 60
-        s = remaining % 60
+        minutes = remaining // 60
+        seconds = remaining % 60
 
-        embed.description = f"{gracz.mention}\n\n" \
-                            f"**ZOSTAŁEŚ WEZWANY**\n" \
-                            f"MASZ 3 MINUTY ABY WEJŚĆ NA POCZEKALNIĘ\n\n" \
-                            f"*Wzywa cię {interaction.user.mention}*\n\n" \
-                            f"⏳ Pozostały czas: {m:02}:{s:02}"
+        embed_channel.description = f"# {gracz.mention}\n\n" \
+                                    f"**ZOSTAŁEŚ WEZWANY**\n" \
+                                    f"MASZ 3 MINUTY ABY WEJŚĆ NA POCZEKALNIĘ\n\n" \
+                                    f"*Wzywa cię {interaction.user.mention}*\n\n" \
+                                    f"⏳ Pozostały czas: {minutes:02}:{seconds:02}"
 
-        await msg.edit(embed=embed)
+        await message.edit(embed=embed_channel)
         await asyncio.sleep(1)
 
 # =====================================================
