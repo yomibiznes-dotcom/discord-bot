@@ -31,13 +31,130 @@ async def on_ready():
     print("✅ Bot gotowy")
 
 # =====================================================
+# CHANGELOG
+# =====================================================
+
+def format_changelog(text):
+    parts = text.split(".")
+    lines = []
+
+    for part in parts:
+        line = part.strip()
+        if not line:
+            continue
+
+        lower = line.lower()
+
+        if "dodano" in lower:
+            prefix = "[+]"
+        elif "usunieto" in lower or "usunięto" in lower:
+            prefix = "[-]"
+        elif "poprawiono" in lower or "naprawiono" in lower:
+            prefix = "[/]"
+        else:
+            prefix = ""
+
+        lines.append(f"`{prefix} {line}`" if prefix else f"`{line}`")
+
+    return "\n".join(lines)
+
+@bot.tree.command(name="changelog", guild=guild_obj)
+async def changelog(interaction: discord.Interaction, data: str, tresc: str, ping: str):
+    await interaction.response.send_message("✅ Changelog wysłany.", ephemeral=True)
+
+    formatted = format_changelog(tresc)
+
+    message = f"""# CHANGELOG
+
+**{data}**
+
+{formatted}
+
+{ping}
+
+**ZMIANY DOSTĘPNE PO 22**"""
+
+    await interaction.channel.send(message)
+
+# =====================================================
+# PV
+# =====================================================
+
+@bot.tree.command(name="pv", guild=guild_obj)
+@app_commands.checks.has_permissions(administrator=True)
+async def pv(interaction: discord.Interaction, rola: discord.Role, tresc: str):
+
+    await interaction.response.defer(ephemeral=True)
+
+    sukces = 0
+    porazka = 0
+
+    for member in rola.members:
+        if member.bot:
+            continue
+
+        embed = discord.Embed(
+            title="📢 Wiadomość od administracji",
+            description=f"━━━━━━━━━━━━━━\n{tresc}\n━━━━━━━━━━━━━━",
+            color=discord.Color.blue()
+        )
+        embed.set_footer(text=f"Wysłano przez: {interaction.user}")
+
+        try:
+            await member.send(embed=embed)
+            sukces += 1
+        except:
+            porazka += 1
+
+    await interaction.followup.send(
+        f"✅ Otrzymało: {sukces}\n❌ Nie otrzymało: {porazka}",
+        ephemeral=True
+    )
+
+# =====================================================
+# VIEW Z PRZYCISKAMI
+# =====================================================
+
+class DecisionView(discord.ui.View):
+    def __init__(self, target_id):
+        super().__init__(timeout=None)
+        self.target_id = target_id
+
+    async def finish(self, interaction, status_text, color):
+        call = active_calls.get(self.target_id)
+        if not call:
+            return
+
+        embed = call["embed"]
+        embed.color = color
+        embed.add_field(name="Status", value=status_text, inline=False)
+
+        await call["message"].edit(embed=embed)
+
+        active_calls.pop(self.target_id, None)
+
+        for item in self.children:
+            item.disabled = True
+
+        await interaction.message.edit(view=self)
+
+    @discord.ui.button(label="STAWIŁ/A SIĘ", style=discord.ButtonStyle.green)
+    async def present(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_message("✅ Oznaczono jako stawił/a się.", ephemeral=True)
+        await self.finish(interaction, "🟢 STAWIŁ/A SIĘ NA POCZEKALNI", discord.Color.green())
+
+    @discord.ui.button(label="NIE STAWIŁ/A SIĘ", style=discord.ButtonStyle.red)
+    async def absent(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_message("❌ Oznaczono jako nie stawił/a się.", ephemeral=True)
+        await self.finish(interaction, "🔴 NIE STAWIŁ/A SIĘ NA POCZEKALNI", discord.Color.red())
+
+# =====================================================
 # WEZWIJ
 # =====================================================
 
 @bot.tree.command(name="wezwij", guild=guild_obj)
 async def wezwij(interaction: discord.Interaction, gracz: discord.Member):
 
-    # ✅ ODPOWIADA OD RAZU (naprawia "aplikacja nie reaguje")
     await interaction.response.send_message("✅ Wezwanie wysłane.", ephemeral=True)
 
     channel = bot.get_channel(WEZWANIE_CHANNEL_ID)
@@ -52,7 +169,6 @@ async def wezwij(interaction: discord.Interaction, gracz: discord.Member):
         color=discord.Color.purple()
     )
 
-    embed.add_field(name="Status", value="⏳ OCZEKIWANIE...", inline=False)
     embed.set_thumbnail(url=bot.user.display_avatar.url)
 
     msg = await channel.send(embed=embed)
@@ -64,20 +180,19 @@ async def wezwij(interaction: discord.Interaction, gracz: discord.Member):
         "end_time": end_time
     }
 
-    # DM
     try:
         await gracz.send(embed=embed)
     except:
         pass
 
-    # TIMER (bez blokowania interakcji)
     bot.loop.create_task(timer_task(gracz.id))
 
 # =====================================================
-# TIMER TASK
+# TIMER
 # =====================================================
 
 async def timer_task(user_id):
+
     while user_id in active_calls:
 
         call = active_calls[user_id]
@@ -89,7 +204,7 @@ async def timer_task(user_id):
 
         if remaining <= 0:
             embed.color = discord.Color.red()
-            embed.set_field_at(0, name="Status", value="🔴 CZAS MINĄŁ", inline=False)
+            embed.add_field(name="Status", value="🔴 CZAS MINĄŁ", inline=False)
             await msg.edit(embed=embed)
             active_calls.pop(user_id, None)
             break
@@ -103,7 +218,7 @@ async def timer_task(user_id):
         await asyncio.sleep(1)
 
 # =====================================================
-# VOICE DETECTION
+# WYKRYCIE WEJŚCIA
 # =====================================================
 
 @bot.event
@@ -114,13 +229,22 @@ async def on_voice_state_update(member, before, after):
 
     if after.channel and after.channel.id == POCZEKALNIA_CHANNEL_ID:
 
-        call = active_calls[member.id]
+        call = active_calls.get(member.id)
         caller = call["caller"]
 
+        embed = discord.Embed(
+            description=f"# {member.mention}\n\n"
+                        f"**JEST NA POCZEKALNI**\n\n"
+                        f"*Wezwany przez {caller.mention}*",
+            color=discord.Color.orange()
+        )
+
+        embed.set_thumbnail(url=bot.user.display_avatar.url)
+
+        view = DecisionView(member.id)
+
         try:
-            await caller.send(
-                f"OSOBA PRZEZ CIEBIE WEZWANA {member.mention} JEST NA POCZEKALNI"
-            )
+            await caller.send(embed=embed, view=view)
         except:
             pass
 
