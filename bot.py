@@ -1,125 +1,98 @@
 import discord
 from discord.ext import commands
 from discord import app_commands
+import asyncio
 import os
+from datetime import datetime, timedelta
 
 TOKEN = os.getenv("TOKEN")
 
-# 🔴 WSTAW TUTAJ ID SWOJEGO SERWERA
-GUILD_ID = 1115692704614060092
+GUILD_ID = 1115692704614060092  # 🔴 WSTAW ID SERWERA
+WEZWANIE_CHANNEL_ID = 1533507726376964186
 
 intents = discord.Intents.default()
-intents.message_content = True
 intents.members = True
+intents.message_content = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 # =====================================================
-# READY + SYNC (GUILD ONLY)
+# READY + CLEAN SYNC
 # =====================================================
 
 @bot.event
 async def on_ready():
     guild = discord.Object(id=GUILD_ID)
+
+    # usuń globalne komendy
+    bot.tree.clear_commands(guild=None)
+
+    # usuń stare guild komendy
+    bot.tree.clear_commands(guild=guild)
+
+    # zsynchronizuj tylko guild
     synced = await bot.tree.sync(guild=guild)
+
     print(f"✅ Zsynchronizowano {len(synced)} komend (guild)")
     print(f"✅ Zalogowano jako {bot.user}")
 
 # =====================================================
-# CHANGELOG
-# =====================================================
-
-def format_changelog(text):
-    parts = text.split(".")
-    formatted_lines = []
-
-    for part in parts:
-        line = part.strip()
-        if not line:
-            continue
-
-        lower = line.lower()
-
-        if "dodano" in lower:
-            prefix = "[+]"
-        elif "usunieto" in lower or "usunięto" in lower:
-            prefix = "[-]"
-        elif "poprawiono" in lower or "naprawiono" in lower:
-            prefix = "[/]"
-        else:
-            prefix = ""
-
-        if prefix:
-            formatted_lines.append(f"`{prefix} {line}`")
-        else:
-            formatted_lines.append(f"`{line}`")
-
-    return "\n".join(formatted_lines)
-
-@bot.tree.command(
-    name="changelog",
-    description="Tworzy changelog",
-    guild=discord.Object(id=GUILD_ID)
-)
-async def changelog(interaction: discord.Interaction, data: str, tresc: str, ping: str):
-
-    formatted = format_changelog(tresc)
-
-    message = f"""# CHANGELOG
-
-**{data}**
-
-{formatted}
-
-{ping}
-
-**ZMIANY DOSTĘPNE PO 22**"""
-
-    await interaction.response.send_message("✅ Changelog wysłany.", ephemeral=True)
-    await interaction.channel.send(message)
-
-# =====================================================
-# PV DO ROLI
+# WEZWIJ
 # =====================================================
 
 @bot.tree.command(
-    name="pv",
-    description="Wyślij prywatną wiadomość do roli",
+    name="wezwij",
+    description="Wezwij gracza na poczekalnię",
     guild=discord.Object(id=GUILD_ID)
 )
-@app_commands.checks.has_permissions(administrator=True)
-async def pv(interaction: discord.Interaction, rola: discord.Role, tresc: str):
+async def wezwij(interaction: discord.Interaction, gracz: discord.Member):
 
-    await interaction.response.defer(ephemeral=True)
+    await interaction.response.send_message("✅ Wezwanie wysłane.", ephemeral=True)
 
-    sukces = []
-    porazka = []
+    channel = bot.get_channel(WEZWANIE_CHANNEL_ID)
 
-    members = [m for m in rola.members if not m.bot]
+    end_time = datetime.utcnow() + timedelta(minutes=3)
 
-    for member in members:
-        embed = discord.Embed(
-            title="📢 Wiadomość od administracji",
-            description=f"━━━━━━━━━━━━━━\n{tresc}\n━━━━━━━━━━━━━━",
-            color=discord.Color.blue()
-        )
-        embed.set_footer(text=f"Wysłano przez: {interaction.user}")
+    embed = discord.Embed(
+        description=f"{gracz.mention}\n\n"
+                    f"**ZOSTAŁEŚ WEZWANY**\n"
+                    f"MASZ 3 MINUTY ABY WEJŚĆ NA POCZEKALNIĘ\n\n"
+                    f"*Wzywa cię {interaction.user.mention}*\n\n"
+                    f"⏳ Pozostały czas: 03:00",
+        color=discord.Color.purple()
+    )
 
-        try:
-            await member.send(embed=embed)
-            sukces.append(member)
-        except discord.Forbidden:
-            porazka.append((member, "Zablokowane DM"))
-        except discord.HTTPException:
-            porazka.append((member, "Błąd HTTP"))
+    embed.set_thumbnail(url=bot.user.display_avatar.url)
 
-    raport = f"""📨 **Raport wysyłki PV**
+    message = await channel.send(embed=embed)
 
-👥 Liczba osób z rolą: {len(members)}
-✅ Otrzymało wiadomość: {len(sukces)}
-❌ Nie otrzymało: {len(porazka)}
-"""
+    # TIMER
+    while True:
+        remaining = int((end_time - datetime.utcnow()).total_seconds())
 
-    await interaction.followup.send(raport, ephemeral=True)
+        if remaining <= 0:
+            embed.description = f"{gracz.mention}\n\n" \
+                                f"**CZAS MINĄŁ ⛔**\n\n" \
+                                f"*Wzywał {interaction.user.mention}*"
+            embed.color = discord.Color.red()
+            await message.edit(embed=embed)
+            break
+
+        minutes = remaining // 60
+        seconds = remaining % 60
+
+        embed.description = f"{gracz.mention}\n\n" \
+                            f"**ZOSTAŁEŚ WEZWANY**\n" \
+                            f"MASZ 3 MINUTY ABY WEJŚĆ NA POCZEKALNIĘ\n\n" \
+                            f"*Wzywa cię {interaction.user.mention}*\n\n" \
+                            f"⏳ Pozostały czas: {minutes:02}:{seconds:02}"
+
+        await message.edit(embed=embed)
+
+        await asyncio.sleep(1)
+
+# =====================================================
+# START
+# =====================================================
 
 bot.run(TOKEN)
