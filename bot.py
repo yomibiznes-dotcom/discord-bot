@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, UTC
 
 TOKEN = os.getenv("TOKEN")
 
-GUILD_ID = 1115692704614060092  # 🔴 WSTAW ID
+GUILD_ID = 1115692704614060092  # 🔴 WSTAW ID SERWERA
 WEZWANIE_CHANNEL_ID = 1533507726376964186
 POCZEKALNIA_CHANNEL_ID = 1115692705184497698
 
@@ -60,6 +60,7 @@ def format_changelog(text):
 
 @bot.tree.command(name="changelog", guild=guild_obj)
 async def changelog(interaction: discord.Interaction, data: str, tresc: str, ping: str):
+
     await interaction.response.send_message("✅ Changelog wysłany.", ephemeral=True)
 
     formatted = format_changelog(tresc)
@@ -77,7 +78,7 @@ async def changelog(interaction: discord.Interaction, data: str, tresc: str, pin
     await interaction.channel.send(message)
 
 # =====================================================
-# PV
+# PV (ADMIN ONLY)
 # =====================================================
 
 @bot.tree.command(name="pv", guild=guild_obj)
@@ -126,6 +127,10 @@ class DecisionView(discord.ui.View):
             return
 
         embed = call["embed"]
+
+        # usuń timer
+        embed.description = embed.description.split("\n\n⏳")[0]
+
         embed.color = color
         embed.add_field(name="Status", value=status_text, inline=False)
 
@@ -177,15 +182,25 @@ async def wezwij(interaction: discord.Interaction, gracz: discord.Member):
         "caller": interaction.user,
         "message": msg,
         "embed": embed,
-        "end_time": end_time
+        "end_time": end_time,
+        "target": gracz
     }
 
+    # DM bez timera
+    dm_embed = discord.Embed(
+        description=f"**ZOSTAŁEŚ WEZWANY**\n\n"
+                    f"Masz 3 minuty aby wejść na poczekalnię.\n\n"
+                    f"*Wzywa cię {interaction.user.mention}*",
+        color=discord.Color.purple()
+    )
+
     try:
-        await gracz.send(embed=embed)
+        await gracz.send(embed=dm_embed)
     except:
         pass
 
     bot.loop.create_task(timer_task(gracz.id))
+    bot.loop.create_task(reminder_task(gracz.id))
 
 # =====================================================
 # TIMER
@@ -203,6 +218,7 @@ async def timer_task(user_id):
         remaining = int((end_time - datetime.now(UTC)).total_seconds())
 
         if remaining <= 0:
+            embed.description = embed.description.split("\n\n⏳")[0]
             embed.color = discord.Color.red()
             embed.add_field(name="Status", value="🔴 CZAS MINĄŁ", inline=False)
             await msg.edit(embed=embed)
@@ -216,6 +232,23 @@ async def timer_task(user_id):
         await msg.edit(embed=embed)
 
         await asyncio.sleep(1)
+
+# =====================================================
+# PRZYPOMNIENIA
+# =====================================================
+
+async def reminder_task(user_id):
+
+    for delay in [60, 120]:
+        await asyncio.sleep(delay)
+        if user_id not in active_calls:
+            return
+
+        target = active_calls[user_id]["target"]
+        try:
+            await target.send("⏰ Przypomnienie: zostałeś wezwany na poczekalnię.")
+        except:
+            pass
 
 # =====================================================
 # WYKRYCIE WEJŚCIA
