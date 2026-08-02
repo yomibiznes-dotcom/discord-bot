@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 
 TOKEN = os.getenv("TOKEN")
 
-GUILD_ID = 1115692704614060092  # 🔴 WSTAW ID SERWERA
+GUILD_ID = 1115692704614060092  # 🔴 WSTAW ID
 WEZWANIE_CHANNEL_ID = 1533507726376964186
 
 intents = discord.Intents.default()
@@ -15,8 +15,17 @@ intents.members = True
 intents.message_content = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
-
 guild_obj = discord.Object(id=GUILD_ID)
+
+# =====================================================
+# RESET GLOBALNYCH KOMEND (WYKONA SIĘ RAZ)
+# =====================================================
+
+@bot.event
+async def setup_hook():
+    # usuń wszystkie globalne komendy
+    bot.tree.clear_commands(guild=None)
+    await bot.tree.sync()
 
 # =====================================================
 # READY
@@ -115,7 +124,7 @@ async def pv(interaction: discord.Interaction, rola: discord.Role, tresc: str):
     await interaction.followup.send(raport, ephemeral=True)
 
 # =====================================================
-# WEZWIJ
+# WEZWIJ (z DM)
 # =====================================================
 
 @bot.tree.command(name="wezwij", guild=guild_obj)
@@ -139,6 +148,12 @@ async def wezwij(interaction: discord.Interaction, gracz: discord.Member):
     embed.set_thumbnail(url=bot.user.display_avatar.url)
 
     msg = await channel.send(embed=embed)
+
+    # ✅ WYŚLIJ TEŻ DM DO WEZWANEGO
+    try:
+        await gracz.send(embed=embed)
+    except:
+        pass
 
     await interaction.followup.send("✅ Wezwanie wysłane.", ephemeral=True)
 
