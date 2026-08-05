@@ -10,6 +10,7 @@ TOKEN = os.getenv("TOKEN")
 GUILD_ID = 1115692704614060092  # 🔴 WSTAW ID SERWERA
 WEZWANIE_CHANNEL_ID = 1533507726376964186
 POCZEKALNIA_CHANNEL_ID = 1115692705184497698
+MAKS_GRACZY = 64  # 🔴 ustaw maksymalną ilość graczy
 
 intents = discord.Intents.default()
 intents.members = True
@@ -28,7 +29,42 @@ active_calls = {}
 @bot.event
 async def on_ready():
     await bot.tree.sync(guild=guild_obj)
+
+    # ✅ OPIS BOTA
+    description = "VEYRONRP WLOFF\n\n|| AUTOR: xvero ||"
+    try:
+        await bot.user.edit(bio=description)
+    except:
+        pass
+
     print("✅ Bot gotowy")
+
+    bot.loop.create_task(update_status())
+
+# =====================================================
+# STATUS AKTYWNOŚCI
+# =====================================================
+
+async def update_status():
+    await bot.wait_until_ready()
+
+    while not bot.is_closed():
+
+        guild = bot.get_guild(GUILD_ID)
+
+        if guild:
+            current_players = guild.member_count
+        else:
+            current_players = 0
+
+        activity = discord.Activity(
+            type=discord.ActivityType.watching,
+            name=f"[{current_players}/{MAKS_GRACZY}] na VEYRONRP"
+        )
+
+        await bot.change_presence(activity=activity)
+
+        await asyncio.sleep(30)
 
 # =====================================================
 # CHANGELOG
@@ -78,7 +114,7 @@ async def changelog(interaction: discord.Interaction, data: str, tresc: str, pin
     await interaction.channel.send(message)
 
 # =====================================================
-# PV (ADMIN ONLY)
+# PV
 # =====================================================
 
 @bot.tree.command(name="pv", guild=guild_obj)
@@ -128,7 +164,6 @@ class DecisionView(discord.ui.View):
 
         embed = call["embed"]
 
-        # usuń timer
         embed.description = embed.description.split("\n\n⏳")[0]
 
         embed.color = color
@@ -186,16 +221,11 @@ async def wezwij(interaction: discord.Interaction, gracz: discord.Member):
         "target": gracz
     }
 
-    # DM bez timera
-    dm_embed = discord.Embed(
-        description=f"**ZOSTAŁEŚ WEZWANY**\n\n"
-                    f"Masz 3 minuty aby wejść na poczekalnię.\n\n"
-                    f"*Wzywa cię {interaction.user.mention}*",
-        color=discord.Color.purple()
-    )
-
     try:
-        await gracz.send(embed=dm_embed)
+        await gracz.send(embed=discord.Embed(
+            description="**ZOSTAŁEŚ WEZWANY**\nMasz 3 minuty aby wejść na poczekalnię.",
+            color=discord.Color.purple()
+        ))
     except:
         pass
 
@@ -247,37 +277,6 @@ async def reminder_task(user_id):
         target = active_calls[user_id]["target"]
         try:
             await target.send("⏰ Przypomnienie: zostałeś wezwany na poczekalnię.")
-        except:
-            pass
-
-# =====================================================
-# WYKRYCIE WEJŚCIA
-# =====================================================
-
-@bot.event
-async def on_voice_state_update(member, before, after):
-
-    if member.id not in active_calls:
-        return
-
-    if after.channel and after.channel.id == POCZEKALNIA_CHANNEL_ID:
-
-        call = active_calls.get(member.id)
-        caller = call["caller"]
-
-        embed = discord.Embed(
-            description=f"# {member.mention}\n\n"
-                        f"**JEST NA POCZEKALNI**\n\n"
-                        f"*Wezwany przez {caller.mention}*",
-            color=discord.Color.orange()
-        )
-
-        embed.set_thumbnail(url=bot.user.display_avatar.url)
-
-        view = DecisionView(member.id)
-
-        try:
-            await caller.send(embed=embed, view=view)
         except:
             pass
 
