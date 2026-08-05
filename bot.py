@@ -2,9 +2,9 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 import asyncio
+import json
 import os
-import aiohttp
-from datetime import datetime, timedelta, UTC
+from datetime import datetime
 
 TOKEN = os.getenv("TOKEN")
 
@@ -304,5 +304,291 @@ async def reminder_task(user_id):
             pass
 
 # =====================================================
+
+# =====================================================
+# TICKETY VEYRONRP — CZĘŚĆ 1 (PANEL + TWORZENIE)
+# =====================================================
+
+TICKET_PANEL_CHANNEL = 1534559517155659976
+TICKET_CATEGORY_ID = 1534563245279547432
+TICKET_ADMIN_ROLE = 1533199994658619644
+TICKET_COUNTER_FILE = "ticket_counter.json"
+
+TICKET_COLOR = 0x00FFFF  # CYAN
+
+# =====================================================
+# LICZNIK TICKETÓW
+# =====================================================
+
+def load_ticket_counter():
+    if not os.path.exists(TICKET_COUNTER_FILE):
+        with open(TICKET_COUNTER_FILE, "w") as f:
+            json.dump({"count": 0}, f)
+
+    with open(TICKET_COUNTER_FILE, "r") as f:
+        return json.load(f)["count"]
+
+def save_ticket_counter(count):
+    with open(TICKET_COUNTER_FILE, "w") as f:
+        json.dump({"count": count}, f)
+
+def get_next_ticket_number():
+    count = load_ticket_counter() + 1
+    save_ticket_counter(count)
+    return count
+
+# =====================================================
+# MODAL (FORMULARZ)
+# =====================================================
+
+class TicketModal(discord.ui.Modal):
+    def __init__(self, category_label):
+        super().__init__(title="VeyronRP — Formularz Ticketa")
+
+        self.category_label = category_label
+
+        self.problem = discord.ui.TextInput(
+            label="Opisz szczegółowo swój problem",
+            style=discord.TextStyle.paragraph,
+            required=True,
+            max_length=1000
+        )
+
+        self.add_item(self.problem)
+
+    async def on_submit(self, interaction: discord.Interaction):
+
+        ticket_number = get_next_ticket_number()
+
+        guild = interaction.guild
+        category = guild.get_channel(TICKET_CATEGORY_ID)
+
+        overwrites = {
+            guild.default_role: discord.PermissionOverwrite(view_channel=False),
+            interaction.user: discord.PermissionOverwrite(view_channel=True, send_messages=True),
+            guild.get_role(TICKET_ADMIN_ROLE): discord.PermissionOverwrite(view_channel=True, send_messages=True),
+            guild.me: discord.PermissionOverwrite(view_channel=True)
+        }
+
+        channel_name = f"{self.category_label.lower().replace(' ', '-')}-{interaction.user.name}".replace("ą","a").replace("ł","l")
+
+        ticket_channel = await guild.create_text_channel(
+            name=channel_name,
+            category=category,
+            overwrites=overwrites
+        )
+
+        embed = discord.Embed(
+            title="🎫 Nowy Ticket — VeyronRP",
+            color=TICKET_COLOR
+        )
+
+        embed.add_field(name="Użytkownik", value=interaction.user.mention, inline=False)
+        embed.add_field(name="ID", value=interaction.user.id, inline=False)
+        embed.add_field(name="Kategoria", value=self.category_label, inline=False)
+        embed.add_field(name="Numer Ticketu", value=f"#{ticket_number}", inline=False)
+        embed.add_field(name="Problem", value=self.problem.value, inline=False)
+
+        await ticket_channel.send(embed=embed)
+
+        await interaction.response.send_message(
+            f"✅ Ticket utworzony: {ticket_channel.mention}",
+            ephemeral=True
+        )
+
+# =====================================================
+# SELECT MENU
+# =====================================================
+
+class TicketSelect(discord.ui.Select):
+    def __init__(self):
+        options = [
+            discord.SelectOption(label="Sprawa ogólna"),
+            discord.SelectOption(label="Sprawa do zarządu"),
+            discord.SelectOption(label="Odbiór produktu"),
+            discord.SelectOption(label="Ban od AntiCheata"),
+            discord.SelectOption(label="Sprawa pojazdowa"),
+        ]
+
+        super().__init__(
+            placeholder="Wybierz typ ticketa...",
+            options=options
+        )
+
+    async def callback(self, interaction: discord.Interaction):
+        await interaction.response.send_modal(
+            TicketModal(self.values[0])
+        )
+
+class TicketPanelView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+        self.add_item(TicketSelect())
+
+# =====================================================
+# KOMENDA DO WYSŁANIA PANELU
+# =====================================================
+
+@bot.tree.command(name="panelticket", description="Wyślij panel ticketów", guild=guild_obj)
+@app_commands.checks.has_permissions(administrator=True)
+async def panelticket(interaction: discord.Interaction):
+
+    embed = discord.Embed(
+        title="🎫 VeyronRP — System Ticketów",
+        description="Administracja odpowiada do 24 godzin.\n\nWybierz typ ticketa poniżej.",
+        color=TICKET_COLOR
+    )
+
+    embed.set_image(url="https://i.imgur.com/8Km9tLL.png")  # możesz podmienić
+
+    await interaction.response.send_message("✅ Panel wysłany.", ephemeral=True)
+
+    channel = bot.get_channel(TICKET_PANEL_CHANNEL)
+    await channel.send(embed=embed, view=TicketPanelView())
+    # =====================================================
+# TICKETY VEYRONRP — CZĘŚĆ 2 (ADMIN + TRANSKRYPCJA)
+# =====================================================
+
+def is_ticket_channel(channel):
+    return channel.category_id == TICKET_CATEGORY_ID
+
+
+async def generate_transcript(channel):
+    messages = []
+    async for msg in channel.history(limit=None, oldest_first=True):
+        timestamp = msg.created_at.strftime("%d.%m.%Y %H:%M")
+        content = msg.content if msg.content else ""
+        messages.append(f"[{timestamp}] {msg.author} ({msg.author.id}): {content}")
+
+    txt_content = "\n".join(messages)
+
+    html_content = "<html><body style='background:#1e1e2f;color:white;font-family:Arial;'>"
+    html_content += f"<h2>Transkrypcja Ticketa — {channel.name}</h2><hr>"
+
+    for line in messages:
+        html_content += f"<p>{line}</p>"
+
+    html_content += "</body></html>"
+
+    txt_file = discord.File(
+        fp=bytes(txt_content, "utf-8"),
+        filename=f"{channel.name}.txt"
+    )
+
+    html_file = discord.File(
+        fp=bytes(html_content, "utf-8"),
+        filename=f"{channel.name}.html"
+    )
+
+    return txt_file, html_file
+
+
+class TranscriptButton(discord.ui.View):
+    def __init__(self, txt_file, html_file):
+        super().__init__(timeout=None)
+        self.txt_file = txt_file
+        self.html_file = html_file
+
+    @discord.ui.button(label="📄 Transkrypcja", style=discord.ButtonStyle.primary)
+    async def send_transcript(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_message(
+            files=[self.txt_file, self.html_file],
+            ephemeral=True
+        )
+
+
+# =====================================================
+# /DODAJ
+# =====================================================
+
+@bot.tree.command(name="dodaj", description="Dodaj osobę do ticketa", guild=guild_obj)
+async def dodaj(interaction: discord.Interaction, osoba: discord.Member):
+
+    if not is_ticket_channel(interaction.channel):
+        return await interaction.response.send_message("❌ To nie jest ticket.", ephemeral=True)
+
+    if TICKET_ADMIN_ROLE not in [r.id for r in interaction.user.roles]:
+        return await interaction.response.send_message("❌ Brak uprawnień.", ephemeral=True)
+
+    await interaction.channel.set_permissions(osoba, view_channel=True, send_messages=True)
+
+    await interaction.response.send_message(f"✅ Dodano {osoba.mention}", ephemeral=True)
+
+
+# =====================================================
+# /ZAMKNIJ
+# =====================================================
+
+@bot.tree.command(name="zamknij", description="Zamknij ticket", guild=guild_obj)
+async def zamknij(interaction: discord.Interaction):
+
+    if not is_ticket_channel(interaction.channel):
+        return await interaction.response.send_message("❌ To nie jest ticket.", ephemeral=True)
+
+    if TICKET_ADMIN_ROLE not in [r.id for r in interaction.user.roles]:
+        return await interaction.response.send_message("❌ Brak uprawnień.", ephemeral=True)
+
+    await interaction.response.send_message("🔒 Zamykam ticket...", ephemeral=True)
+
+    await close_ticket(interaction, None)
+
+
+# =====================================================
+# /ZAMKNIJPOWOD
+# =====================================================
+
+@bot.tree.command(name="zamknijpowod", description="Zamknij ticket z powodem", guild=guild_obj)
+async def zamknijpowod(interaction: discord.Interaction, powod: str):
+
+    if not is_ticket_channel(interaction.channel):
+        return await interaction.response.send_message("❌ To nie jest ticket.", ephemeral=True)
+
+    if TICKET_ADMIN_ROLE not in [r.id for r in interaction.user.roles]:
+        return await interaction.response.send_message("❌ Brak uprawnień.", ephemeral=True)
+
+    await interaction.response.send_message("🔒 Zamykam ticket...", ephemeral=True)
+
+    await close_ticket(interaction, powod)
+
+
+# =====================================================
+# FUNKCJA ZAMYKANIA
+# =====================================================
+
+async def close_ticket(interaction, powod):
+
+    channel = interaction.channel
+
+    # Znajdź twórcę (pierwsza wiadomość embed)
+    creator = None
+    async for msg in channel.history(limit=10, oldest_first=True):
+        if msg.embeds:
+            try:
+                creator_id = int(msg.embeds[0].fields[0].value.strip("<@>").replace("!", ""))
+                creator = interaction.guild.get_member(creator_id)
+                break
+            except:
+                pass
+
+    txt_file, html_file = await generate_transcript(channel)
+
+    if creator:
+        embed = discord.Embed(
+            title="🎫 Twój ticket został zamknięty",
+            description=f"Zamknięty przez: {interaction.user.mention}",
+            color=TICKET_COLOR
+        )
+
+        if powod:
+            embed.add_field(name="Powód zamknięcia", value=powod, inline=False)
+
+        view = TranscriptButton(txt_file, html_file)
+
+        try:
+            await creator.send(embed=embed, view=view)
+        except:
+            pass
+
+    await channel.delete()
 
 bot.run(TOKEN)
