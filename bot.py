@@ -3,14 +3,18 @@ from discord.ext import commands
 from discord import app_commands
 import asyncio
 import os
+import aiohttp
 from datetime import datetime, timedelta, UTC
 
 TOKEN = os.getenv("TOKEN")
 
-GUILD_ID = 1115692704614060092  # 🔴 WSTAW ID SERWERA
+# 🔴 WSTAW ID SWOJEGO SERWERA DISCORD
+GUILD_ID = 1115692704614060092
+
 WEZWANIE_CHANNEL_ID = 1533507726376964186
 POCZEKALNIA_CHANNEL_ID = 1115692705184497698
-MAKS_GRACZY = 64  # 🔴 ustaw maksymalną ilość graczy
+
+FIVEM_SERVER = "http://37.221.94.185:30170"
 
 intents = discord.Intents.default()
 intents.members = True
@@ -31,9 +35,8 @@ async def on_ready():
     await bot.tree.sync(guild=guild_obj)
 
     # ✅ OPIS BOTA
-    description = "VEYRONRP WLOFF\n\n|| AUTOR: xvero ||"
     try:
-        await bot.user.edit(bio=description)
+        await bot.user.edit(bio="VEYRONRP WLOFF\n\n|| AUTOR: xvero ||")
     except:
         pass
 
@@ -42,7 +45,7 @@ async def on_ready():
     bot.loop.create_task(update_status())
 
 # =====================================================
-# STATUS AKTYWNOŚCI
+# STATUS Z FIVEM
 # =====================================================
 
 async def update_status():
@@ -50,17 +53,40 @@ async def update_status():
 
     while not bot.is_closed():
 
-        guild = bot.get_guild(GUILD_ID)
+        players_online = 0
+        max_players = 0
+        server_online = True
 
-        if guild:
-            current_players = guild.member_count
+        try:
+            async with aiohttp.ClientSession() as session:
+
+                async with session.get(f"{FIVEM_SERVER}/players.json", timeout=5) as r:
+                    if r.status == 200:
+                        data = await r.json()
+                        players_online = len(data)
+                    else:
+                        server_online = False
+
+                async with session.get(f"{FIVEM_SERVER}/info.json", timeout=5) as r:
+                    if r.status == 200:
+                        info = await r.json()
+                        max_players = int(info["vars"].get("sv_maxClients", 0))
+                    else:
+                        server_online = False
+
+        except:
+            server_online = False
+
+        if not server_online:
+            activity = discord.Activity(
+                type=discord.ActivityType.watching,
+                name="🔴 SERWER OFFLINE"
+            )
         else:
-            current_players = 0
-
-        activity = discord.Activity(
-            type=discord.ActivityType.watching,
-            name=f"[{current_players}/{MAKS_GRACZY}] na VEYRONRP"
-        )
+            activity = discord.Activity(
+                type=discord.ActivityType.watching,
+                name=f"[{players_online}/{max_players}] na VEYRONRP"
+            )
 
         await bot.change_presence(activity=activity)
 
@@ -114,7 +140,7 @@ async def changelog(interaction: discord.Interaction, data: str, tresc: str, pin
     await interaction.channel.send(message)
 
 # =====================================================
-# PV
+# PV (ADMIN ONLY)
 # =====================================================
 
 @bot.tree.command(name="pv", guild=guild_obj)
@@ -149,7 +175,7 @@ async def pv(interaction: discord.Interaction, rola: discord.Role, tresc: str):
     )
 
 # =====================================================
-# VIEW Z PRZYCISKAMI
+# PRZYCISKI DECYZYJNE
 # =====================================================
 
 class DecisionView(discord.ui.View):
@@ -163,14 +189,11 @@ class DecisionView(discord.ui.View):
             return
 
         embed = call["embed"]
-
         embed.description = embed.description.split("\n\n⏳")[0]
-
         embed.color = color
         embed.add_field(name="Status", value=status_text, inline=False)
 
         await call["message"].edit(embed=embed)
-
         active_calls.pop(self.target_id, None)
 
         for item in self.children:
@@ -180,12 +203,12 @@ class DecisionView(discord.ui.View):
 
     @discord.ui.button(label="STAWIŁ/A SIĘ", style=discord.ButtonStyle.green)
     async def present(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_message("✅ Oznaczono jako stawił/a się.", ephemeral=True)
+        await interaction.response.send_message("✅ Oznaczono.", ephemeral=True)
         await self.finish(interaction, "🟢 STAWIŁ/A SIĘ NA POCZEKALNI", discord.Color.green())
 
     @discord.ui.button(label="NIE STAWIŁ/A SIĘ", style=discord.ButtonStyle.red)
     async def absent(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_message("❌ Oznaczono jako nie stawił/a się.", ephemeral=True)
+        await interaction.response.send_message("❌ Oznaczono.", ephemeral=True)
         await self.finish(interaction, "🔴 NIE STAWIŁ/A SIĘ NA POCZEKALNI", discord.Color.red())
 
 # =====================================================
